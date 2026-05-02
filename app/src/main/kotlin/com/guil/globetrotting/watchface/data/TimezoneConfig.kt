@@ -35,7 +35,7 @@ val GRID_CELLS: List<GridCell> = listOf(
 
 object GridMetrics {
     const val ORIGIN_X = 60f
-    const val ORIGIN_Y = 340f
+    const val ORIGIN_Y = 338f
     const val COL_WIDTH = 115f
     const val GUTTER = 6f
     const val ROW_HEIGHT = 20f

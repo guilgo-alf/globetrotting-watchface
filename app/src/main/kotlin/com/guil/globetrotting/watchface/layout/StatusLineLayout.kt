@@ -32,7 +32,7 @@ class StatusLineLayout(context: Context) {
     }
 
     private fun formatStatusLine(state: RenderState): String {
-        val steps = state.stepCount.toString()
+        val steps = String.format(java.util.Locale.ENGLISH, "%,d", state.stepCount)
         val temp = state.weatherTempC?.let { "${it}°C" } ?: "--°C"
         val watch = state.watchBatteryPct.toString()
         val phone = state.phoneBatteryPct?.toString() ?: "--"

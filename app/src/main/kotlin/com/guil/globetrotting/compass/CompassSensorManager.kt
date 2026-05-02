@@ -28,6 +28,10 @@ class CompassSensorManager(context: Context) {
 
             // orientation[0] = azimuth in radians (-PI..PI, 0 = north)
             val azimuthDeg = Math.toDegrees(orientation[0].toDouble()).toFloat()
+            // Guard against degenerate sensor data (e.g. emulator with no magnetic
+            // field set produces NaN). Skip the update so currentBearing keeps its
+            // last good value rather than becoming NaN and hiding the arc.
+            if (azimuthDeg.isNaN() || azimuthDeg.isInfinite()) return
             val normalised = (azimuthDeg + 360f) % 360f
             bearingListener?.invoke(smoother.update(normalised))
         }
@@ -38,10 +42,13 @@ class CompassSensorManager(context: Context) {
     fun start(onBearingUpdate: (Float) -> Unit) {
         if (rotationSensor == null) return
         bearingListener = onBearingUpdate
+        // SENSOR_DELAY_NORMAL ≈ 200 ms / 5 Hz — slower polling kills high-frequency
+        // jitter at the source. Combined with the bearing smoother and the invalidate
+        // throttle it gives a calm, intentional rotation.
         sensorManager.registerListener(
             sensorListener,
             rotationSensor,
-            SensorManager.SENSOR_DELAY_UI,
+            SensorManager.SENSOR_DELAY_NORMAL,
         )
     }
 

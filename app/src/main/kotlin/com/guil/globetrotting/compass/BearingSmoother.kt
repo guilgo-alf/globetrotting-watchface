@@ -1,6 +1,6 @@
 package com.guil.globetrotting.compass
 
-class BearingSmoother(private val alpha: Float = 0.15f) {
+class BearingSmoother(private val alpha: Float = 0.10f) {
 
     private var lastBearing: Float? = null
 

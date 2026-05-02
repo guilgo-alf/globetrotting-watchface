@@ -2,18 +2,19 @@ package com.guil.globetrotting.watchface.layout
 
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.RectF
 import com.guil.globetrotting.watchface.RenderState
 import com.guil.globetrotting.watchface.data.WatchFaceColors
 import com.guil.globetrotting.watchface.data.WatchFaceMetrics
 
 /**
- * Thin red stroked arc inside the black watch face area, ~12° of sweep centred on
- * magnetic north. Rotates around the centre as the wrist rotates. No fill, no glow.
+ * Thin red stroked arc on the bezel marking magnetic north. The arc shape itself is
+ * static; we rotate the canvas around the watch centre by the bearing each frame.
  *
- * Reference: ~93% of canvas radius, ~12° sweep, stroke ~0.7% of canvas diameter
- * (scaled from a 1.4 px reference at 200 px diameter).
+ * Rendering:
+ *   1. Translate canvas origin to watch centre
+ *   2. Rotate by bearing degrees (0° = north stays at top, 90° rotates to 3 o'clock, …)
+ *   3. drawArc on a centred oval — start at -90 - sweep/2 (i.e. 12 o'clock), sweep SWEEP_DEG
  */
 class CompassOverlayLayout {
 
@@ -22,40 +23,34 @@ class CompassOverlayLayout {
         style = Paint.Style.STROKE
         strokeWidth = STROKE_WIDTH
         strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
     }
 
-    /**
-     * Bounding box of the *full circle* the arc lives on — Canvas.drawArc uses this
-     * with start/sweep angles (in degrees, 0° = 3 o'clock, increasing clockwise).
-     */
-    private val arcBounds: RectF = RectF(
-        WatchFaceMetrics.CENTRE - ARC_RADIUS,
-        WatchFaceMetrics.CENTRE - ARC_RADIUS,
-        WatchFaceMetrics.CENTRE + ARC_RADIUS,
-        WatchFaceMetrics.CENTRE + ARC_RADIUS,
-    )
+    private val arcBounds: RectF = RectF(-ARC_RADIUS, -ARC_RADIUS, ARC_RADIUS, ARC_RADIUS)
 
     fun draw(canvas: Canvas, state: RenderState) {
         if (state.isAmbient) return
         val bearing = state.compassBearingDeg ?: return
+        if (bearing.isNaN()) return
 
-        // bearing 0° (north) should appear at 12 o'clock (Canvas angle 270°, i.e. -90°).
-        // Canvas drawArc startAngle is the position of the arc's leading edge, measured
-        // clockwise from 3 o'clock. We want the arc *centred* on the heading, so the
-        // start angle is heading − 90 − sweep/2.
-        val startAngle = bearing - 90f - SWEEP_DEG / 2f
-        canvas.drawArc(arcBounds, startAngle, SWEEP_DEG, false, markerPaint)
+        canvas.save()
+        canvas.translate(WatchFaceMetrics.CENTRE, WatchFaceMetrics.CENTRE)
+        canvas.rotate(bearing)
+        canvas.drawArc(
+            arcBounds,
+            -90f - SWEEP_DEG / 2f,
+            SWEEP_DEG,
+            /* useCenter = */ false,
+            markerPaint,
+        )
+        canvas.restore()
     }
 
     companion object {
-        // Inner edge of the visible black face is ~r=220 on a 480-canvas. 93 % keeps
-        // the arc just inside it with a little margin to the bezel.
-        private const val ARC_RADIUS = 220f * 0.93f
-        private const val SWEEP_DEG = 12f
+        // 4 px inside the bezel so the entire stroke is visible — no clipping by the round mask.
+        private const val ARC_RADIUS = 216f
+        // 13.5° (10% shorter than the previous 15°) — even tighter arc segment.
+        private const val SWEEP_DEG = 13.5f
         private const val STROKE_WIDTH = 480f * 0.013f
     }
-
-    // Path retained for potential future custom path rendering — currently unused.
-    @Suppress("unused")
-    private val unusedPath = Path()
 }

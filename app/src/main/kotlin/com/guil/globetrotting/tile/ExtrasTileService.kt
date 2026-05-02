@@ -53,58 +53,71 @@ class ExtrasTileService : TileService() {
         val now = ZonedDateTime.now()
         val localZone = ZoneId.systemDefault()
         val saved = TimezoneTileConfig.SAVED_ZONES
-        val isTravelling = saved.none { it.zoneId == localZone }
         val localOffsetSeconds = now.offset.totalSeconds
+        val isInSaved = saved.any { it.zoneId == localZone }
 
-        // The header reflects the user's current zone (home or travel).
-        val activeAbbreviation: String
-        val activeCity: String
-        if (isTravelling) {
-            activeAbbreviation = abbreviationFor(localZone, now)
-            activeCity = TimezoneTileConfig.cityFromZone(localZone)
-        } else {
-            val savedHome = saved.first { it.zoneId == localZone }
-            activeAbbreviation = savedHome.abbreviation
-            activeCity = savedHome.cityOverride ?: TimezoneTileConfig.cityFromZone(localZone)
-        }
+        // Reference minute = home (CET/CEST) zone's current minute. Rows that share
+        // this minute have their :mm rendered dimmer to reduce visual repetition.
+        val cestMinute = saved.firstOrNull { it.zoneId.id == "Europe/Amsterdam" }
+            ?.let { now.withZoneSameInstant(it.zoneId).minute }
 
         val rows = saved.map { zone ->
             val zoned = now.withZoneSameInstant(zone.zoneId)
-            val offsetDelta = zoned.offset.totalSeconds - localOffsetSeconds
-            val isLocal = zone.zoneId == localZone
-            val dimmed = isTravelling && isLocal
+            val abbr = zone.abbreviationAt(now)
             ExtrasTileRenderer.RowData(
                 zoneId = zone.zoneId,
-                abbreviation = zone.abbreviation,
+                abbreviation = abbr,
                 flag = zone.flagEmoji,
                 zonedTime = zoned,
-                offsetSeconds = offsetDelta,
-                highlighted = !isTravelling && isLocal,
-                dimmed = dimmed,
-                bandResourceId = "band_${zone.abbreviation.lowercase()}",
+                offsetSeconds = zoned.offset.totalSeconds - localOffsetSeconds,
+                highlighted = false,  // resolved below
+                dimmed = false,
+                bandResourceId = "band_${abbr.lowercase()}",
+                // Dim :mm whenever it echoes the home-zone minute. Applies to home
+                // (CET/CEST) too — its minutes are the reference, so they're noisy by
+                // definition and benefit from being quieter.
+                dimMinutes = cestMinute != null && zoned.minute == cestMinute,
             )
+        }.toMutableList()
+
+        // Pick which row to highlight, in priority order:
+        //   1. Saved row whose ZoneId matches the user's local zone (e.g. local = Amsterdam, saved CEST = Amsterdam)
+        //   2. Saved row that currently has the same UTC offset (e.g. local = Berlin, saved Amsterdam → both CEST = +2)
+        //   3. None match → insert a new row for the local zone at its sorted position
+        val exactIdx = rows.indexOfFirst { it.zoneId == localZone }
+        when {
+            exactIdx != -1 ->
+                rows[exactIdx] = rows[exactIdx].copy(highlighted = true)
+            else -> {
+                val sameOffsetIdx = rows.indexOfFirst { it.zonedTime.offset.totalSeconds == localOffsetSeconds }
+                if (sameOffsetIdx != -1) {
+                    rows[sameOffsetIdx] = rows[sameOffsetIdx].copy(highlighted = true)
+                } else {
+                    val localRow = ExtrasTileRenderer.RowData(
+                        zoneId = localZone,
+                        abbreviation = abbreviationFor(localZone, now),
+                        flag = TimezoneTileConfig.flagFromZone(localZone),
+                        zonedTime = now,
+                        offsetSeconds = 0,
+                        highlighted = true,
+                        dimmed = false,
+                        bandResourceId = "band_local",
+                    )
+                    val insertIdx = rows.indexOfFirst { it.zonedTime.offset.totalSeconds > localOffsetSeconds }
+                    if (insertIdx == -1) rows.add(localRow) else rows.add(insertIdx, localRow)
+
+                    // Drop NZST (Auckland) to keep the row count constant when a new
+                    // travel row is added — prevents the tile from getting too tall.
+                    rows.removeAll { it.zoneId.id == "Pacific/Auckland" }
+                }
+            }
         }
 
-        val travelRow = if (isTravelling) {
-            ExtrasTileRenderer.RowData(
-                zoneId = localZone,
-                abbreviation = activeAbbreviation,
-                flag = "",
-                zonedTime = now,
-                offsetSeconds = 0,
-                highlighted = true,
-                dimmed = false,
-                bandResourceId = "band_travel",
-                hideFlag = true,
-                hideOffset = true,
-            )
-        } else null
-
         return ExtrasTileRenderer.TileViewModel(
-            headerTime = ExtrasTileRenderer.headerTime(now),
+            headerTime = "",
             headerSub = "",
             rows = rows,
-            travelRow = travelRow,
+            travelRow = null,
             travelCaption = null,
         )
     }

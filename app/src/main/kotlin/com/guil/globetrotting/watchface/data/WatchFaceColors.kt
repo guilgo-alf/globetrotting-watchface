@@ -22,17 +22,17 @@ object WatchFaceMetrics {
     const val CANVAS = 480
     const val CENTRE = 240f
 
-    const val BIG_TIME_SIZE_PX = 152f
+    const val BIG_TIME_SIZE_PX = 160f
     const val BIG_TIME_TRACKING = -13f
     const val BIG_TIME_SCALE_X = 0.96f
     const val SECONDS_SUPER_SIZE_PX = 22f
     const val SECONDS_GAP_PX = 8f
-    const val STATUS_LINE_SIZE_PX = 17f
+    const val STATUS_LINE_SIZE_PX = 19f
     const val TIMEZONE_ROW_SIZE_PX = 16f
     const val DATE_LABEL_SIZE_PX = 22f
 
-    const val BIG_TIME_CENTRE_X = 240f
-    const val BIG_TIME_CENTRE_Y = 220f
-    const val STATUS_LINE_CENTRE_X = 240f
-    const val STATUS_LINE_CENTRE_Y = 123f
+    const val BIG_TIME_CENTRE_X = 238f
+    const val BIG_TIME_CENTRE_Y = 221f
+    const val STATUS_LINE_CENTRE_X = 246f
+    const val STATUS_LINE_CENTRE_Y = 119f
 }
