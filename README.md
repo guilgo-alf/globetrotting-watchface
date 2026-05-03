@@ -101,8 +101,10 @@ The renderer auto-detects the AVD via `Build.FINGERPRINT/MODEL/HARDWARE` and swi
 
 - Complications work (slots wire correctly, no bind timeout) but the picker UI to fill them is hidden in Galaxy Watch's One UI Watch — needs a custom editor activity
 - Steps relies on `TYPE_STEP_COUNTER`, which Samsung's firmware batches unpredictably — should swap for the Health Services API (`androidx.health:health-services-client`)
-- Compass is disabled on real watch because the magnetometer is corrupted by the metallic rotating bezel — needs a calibration UX
+- Watch face is single-font (OpenDyslexic) — desired: a user-style option to switch between OpenDyslexic and One UI Sans via Customize
+- Tile is single-font (One UI Sans / ProtoLayout default) — desired: a second tile in the carousel rendering the same content in OpenDyslexic via the bitmap-rendering workaround for ProtoLayout's no-custom-font constraint
 - Picker thumbnail is a placeholder vector — needs a real face render
+- Compass is disabled on real watch because the magnetometer is corrupted by the metallic rotating bezel — needs a calibration UX
 
 ## Credits
 

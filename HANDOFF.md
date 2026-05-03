@@ -20,6 +20,8 @@ You're being hired to fix four specific issues in this codebase. **The repo work
 
 ## Tasks (in priority order)
 
+Tasks 1, 2, 5 are must-have. Tasks 3, 4 are added value (the typography matters to the owner). Task 6 is optional, only if the others come in under budget.
+
 ### 1. Customize flow on Galaxy Watch 6 Classic 🔥 (priority)
 
 **Problem.** The watch face declares 2 invisible complication slots (`ComplicationSlots.kt`). They wire correctly — `dumpsys` confirms the slots exist with `provider=null`. The system editor never appears in Samsung One UI Watch's long-press flow on the real watch. This means the slots can never be filled, so the renderer always shows the placeholder values (`22°C` / `65`).
@@ -46,7 +48,37 @@ You're being hired to fix four specific issues in this codebase. **The repo work
 
 ---
 
-### 3. Real preview thumbnail for the picker
+### 3. Watch face font picker — OpenDyslexic vs One UI Sans
+
+**Problem.** The watch face currently uses OpenDyslexic-Regular as a single bundled font across all layouts (`StatusLineLayout`, `BigTimeLayout`, `TimezoneGridLayout`, `CompassOverlayLayout`). Owner wants to be able to switch between **OpenDyslexic** (current default) and **One UI Sans** (Samsung's system default sans-serif) via the system Customize editor.
+
+**Expected outcome.** A user-style option visible in long-press → Customize on the real Galaxy Watch 6 Classic. Two choices, OpenDyslexic and One UI Sans. Selection persists across face-switches and reboots, applied to every text element on the face.
+
+**Likely involves.** Adding a `UserStyleSchema.ListUserStyleSetting` to `GlobetrottingWatchFaceService.createUserStyleSchema()` (currently returns `UserStyleSchema(emptyList())`), threading the current style choice from `currentUserStyleRepository` to `GlobetrottingRenderer`, and swapping the `Typeface` in each layout's `Paint` based on the active option. One UI Sans on a Samsung device is just `Typeface.DEFAULT` — no font asset needed; only OpenDyslexic loads from `res/font/`.
+
+**Note.** This depends on task 1 — without the editor activity exposed, the option won't be reachable from the watch UI. Build task 1 first.
+
+**Acceptance test.** Long-press → Customize on the real Galaxy Watch 6 Classic surfaces a "Font" option with two choices. Picking each visibly switches the watch face typography (time digits, status line, date label all change). Choice survives a reboot.
+
+---
+
+### 4. Two tile variants — One UI Sans + OpenDyslexic
+
+**Problem.** The tile currently uses ProtoLayout's default font, which on Samsung devices renders as One UI Sans. Owner wants a *second* tile registered alongside it that renders the same content with OpenDyslexic typography, so the tile carousel offers both as separately selectable tiles.
+
+**Constraint — read this first.** ProtoLayout has **no custom-font API**. Tile rendering happens in the system process (`com.google.android.wearable.app`), which has no access to the APK's `res/font/` resources. Verified against `androidx.wear.protolayout:1.4.0` and the AndroidX main branch — `ResourceBuilders.Resources` only registers images, not fonts. `FontStyle.setPreferredFontFamilies()` only accepts system names (`"roboto"` / `"roboto-flex"`); custom names are ignored.
+
+**Likely involves.** Either:
+- **(a)** Render each text element of the tile as a bitmap (using `android.graphics.Paint` + `Typeface.createFromAsset(...)` to load OpenDyslexic from APK assets), then ship via `InlineImageResource` registered in `onTileResourcesRequest`. The existing `ExtrasTileRenderer.bandResource()` is a starting reference for the bitmap-and-register pattern. Substantial work because every `Text` element becomes an `Image`, and you lose ProtoLayout's auto layout for text.
+- **(b)** A different approach you know that we don't — open to ideas if there's something we missed.
+
+**Architecture.** Two distinct `TileService` classes registered in the manifest (e.g. `ExtrasTileService` for One UI Sans, `ExtrasTileServiceDyslexic` for OpenDyslexic) is probably cleanest, sharing the bulk of the rendering logic. Each tile gets its own label so they appear as separate options in the carousel.
+
+**Acceptance test.** Tile carousel on the Galaxy Watch 6 Classic shows both variants. The OpenDyslexic variant renders all timezone codes, hours, offsets in OpenDyslexic typography. Both render in interactive mode and don't crash on AOD transitions.
+
+---
+
+### 5. Real preview thumbnail for the picker
 
 **Problem.** `app/src/main/res/drawable/preview.xml` is a placeholder vector (black square + 5 white bars). When the user opens the watch-face picker, our face shows up with this generic icon instead of a real thumbnail of the design.
 
@@ -58,7 +90,7 @@ You're being hired to fix four specific issues in this codebase. **The repo work
 
 ---
 
-### 4. (Optional) Compass calibration UX
+### 6. (Optional) Compass calibration UX
 
 **Status.** Disabled on real watch in `GlobetrottingRenderer` (`enableCompass = isPreviewEmulator`). Galaxy Watch 6 Classic's metallic rotating bezel sits millimetres from the magnetometer and produces unreliable readings without manual figure-8 calibration. We can re-enable for screenshot mode (works there) but it floats wildly on real wrist.
 
@@ -67,7 +99,7 @@ You're being hired to fix four specific issues in this codebase. **The repo work
 - Possibly heavier smoothing or a different sensor source
 - Possibly a one-time onboarding asking the user to do figure-8
 
-**Lowest priority.** If items 1-3 cost more than expected, skip this one and just leave it disabled.
+**Lowest priority.** If items 1-5 cost more than expected, skip this one and just leave it disabled.
 
 **Acceptance test.** Compass arc points consistently towards magnetic north on real hardware after a figure-8 calibration prompt; doesn't drift more than ~5° while stationary.
 
