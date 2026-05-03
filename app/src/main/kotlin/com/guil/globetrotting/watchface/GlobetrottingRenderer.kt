@@ -5,9 +5,12 @@ import android.graphics.Canvas
 import android.graphics.Rect
 import android.view.SurfaceHolder
 import androidx.wear.watchface.CanvasType
+import androidx.wear.watchface.ComplicationSlotsManager
 import androidx.wear.watchface.DrawMode
 import androidx.wear.watchface.Renderer
 import androidx.wear.watchface.WatchState
+import androidx.wear.watchface.complications.data.RangedValueComplicationData
+import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.style.CurrentUserStyleRepository
 import com.guil.globetrotting.compass.CompassSensorManager
 import com.guil.globetrotting.stats.BatteryProvider
@@ -23,10 +26,11 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 
 class GlobetrottingRenderer(
-    context: Context,
+    private val context: Context,
     surfaceHolder: SurfaceHolder,
     currentUserStyleRepository: CurrentUserStyleRepository,
     private val watchStateRef: WatchState,
+    private val complicationSlotsManager: ComplicationSlotsManager,
 ) : Renderer.CanvasRenderer2<GlobetrottingRenderer.GlobeAssets>(
     surfaceHolder,
     currentUserStyleRepository,
@@ -132,26 +136,50 @@ class GlobetrottingRenderer(
         // The AVD has no step sensor, so substitute a believable value. On real
         // hardware, stepsProvider.stepsToday() returns the real count.
         val steps = stepsProvider.stepsToday().takeIf { it > 0 } ?: 1_445
-        // Plausible placeholders so the 4-element status line reads as designed in
-        // the emulator. On real hardware these get replaced by:
-        //   - phoneBattery: Wear DataLayer message exchange with the paired phone
-        //   - weather: a Complication slot
-        // Until that wiring lands, the constants below are realistic defaults — a
-        // Maastricht spring temp and a half-charged phone battery.
-        val emulatorPlaceholderPhoneBattery = 65
-        val emulatorPlaceholderWeatherC = 22
+        // Read complication slots (weather + phone battery). Slots are user-fillable
+        // via the long-press editor on real watch — Phone Hub for phone battery,
+        // Google Weather (or similar) for temperature. On the emulator the slots are
+        // empty, so the values fall back to placeholders so the design reads.
+        val weatherC = readShortTextOrRangedAsInt(ComplicationSlots.WEATHER_SLOT_ID)
+            ?: EMULATOR_PLACEHOLDER_WEATHER_C
+        val phoneBattery = readShortTextOrRangedAsInt(ComplicationSlots.PHONE_BATTERY_SLOT_ID)
+            ?: EMULATOR_PLACEHOLDER_PHONE_BATTERY
         return RenderState(
             now = localZdt,
             watchBatteryPct = batteryProvider.currentPercent(),
             stepCount = steps,
-            phoneBatteryPct = emulatorPlaceholderPhoneBattery,
-            weatherTempC = emulatorPlaceholderWeatherC,
+            phoneBatteryPct = phoneBattery,
+            weatherTempC = weatherC,
             compassBearingDeg = currentBearing,
             isAmbient = isAmbient,
         )
     }
 
+    /**
+     * Pull the int value out of a complication slot. Handles both common shapes:
+     *   - RANGED_VALUE: e.g. battery percentage (returns the float value rounded)
+     *   - SHORT_TEXT: e.g. weather "22°C" — strips the unit and parses the digits
+     * Returns null if the slot is empty, the data type is something else, or parsing fails.
+     */
+    private fun readShortTextOrRangedAsInt(slotId: Int): Int? {
+        val slot = complicationSlotsManager.complicationSlots[slotId] ?: return null
+        return when (val data = slot.complicationData.value) {
+            is RangedValueComplicationData -> data.value.toInt()
+            is ShortTextComplicationData -> {
+                val raw = data.text.getTextAt(context.resources, Instant.now()).toString()
+                // Extract leading number, ignoring "°C", "%", whitespace etc.
+                Regex("-?\\d+").find(raw)?.value?.toIntOrNull()
+            }
+            else -> null
+        }
+    }
+
     companion object {
         private const val INTERACTIVE_FRAME_PERIOD_MS = 1_000L
+        // Used when the corresponding complication slot is empty (e.g. on the
+        // emulator where no provider is installed). On real watch the user fills
+        // the slots via long-press → Customize.
+        private const val EMULATOR_PLACEHOLDER_WEATHER_C = 22
+        private const val EMULATOR_PLACEHOLDER_PHONE_BATTERY = 65
     }
 }
