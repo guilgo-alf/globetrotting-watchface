@@ -1,6 +1,9 @@
 package com.guil.globetrotting.compass
 
-class BearingSmoother(private val alpha: Float = 0.10f) {
+// alpha=0.05 gives heavier smoothing than the previous 0.10 — needed on real
+// Galaxy Watch 6 Classic where the metallic rotating bezel sits very close to
+// the magnetometer and amplifies sensor noise.
+class BearingSmoother(private val alpha: Float = 0.05f) {
 
     private var lastBearing: Float? = null
 

@@ -23,8 +23,9 @@ class StatusLineLayout(context: Context) {
     }
 
     fun draw(canvas: Canvas, state: RenderState) {
-        if (state.isAmbient) return
-
+        // AOD: render at FAINT colour so the status line still appears in always-on
+        // mode but doesn't dominate. Same pattern the timezone grid uses for AOD.
+        paint.color = if (state.isAmbient) WatchFaceColors.FAINT else WatchFaceColors.MUTED
         val text = formatStatusLine(state)
         val metrics = paint.fontMetrics
         val baselineY = WatchFaceMetrics.STATUS_LINE_CENTRE_Y - (metrics.ascent + metrics.descent) / 2f
@@ -33,13 +34,13 @@ class StatusLineLayout(context: Context) {
 
     private fun formatStatusLine(state: RenderState): String {
         // Four-field format: steps · weather · watchBattery · phoneBattery.
-        // Real on the watch: stepCount + watchBatteryPct. Placeholder until DataLayer
-        // (phone battery) and a Complication slot (weather) get wired — see RenderState.
-        // Nullable fields fall back to "--" so the row never disappears or shifts.
+        // Battery percentages render as bare numbers — no `%` suffix — matching the
+        // original Facer reference. The °C on the temp field is the only unit; the
+        // bare numbers read as "context-implied percentages".
         val steps = String.format(java.util.Locale.ENGLISH, "%,d", state.stepCount)
         val temp = state.weatherTempC?.let { "${it}°C" } ?: "--°C"
-        val watch = "${state.watchBatteryPct}%"
-        val phone = state.phoneBatteryPct?.let { "${it}%" } ?: "--%"
+        val watch = state.watchBatteryPct.toString()
+        val phone = state.phoneBatteryPct?.toString() ?: "--"
         return "$steps $SEP $temp $SEP $watch $SEP $phone"
     }
 

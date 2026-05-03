@@ -47,8 +47,9 @@ class CompassOverlayLayout {
     }
 
     companion object {
-        // 4 px inside the bezel so the entire stroke is visible — no clipping by the round mask.
-        private const val ARC_RADIUS = 216f
+        // 222: 6 px further from centre per real-watch feedback. Still well inside
+        // the round mask (240 radius - 222 = 18 px clearance) so no clipping.
+        private const val ARC_RADIUS = 222f
         // 13.5° (10% shorter than the previous 15°) — even tighter arc segment.
         private const val SWEEP_DEG = 13.5f
         private const val STROKE_WIDTH = 480f * 0.013f

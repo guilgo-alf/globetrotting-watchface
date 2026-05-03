@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import androidx.wear.protolayout.ActionBuilders
 import androidx.wear.protolayout.ColorBuilders
 import androidx.wear.protolayout.ColorBuilders.argb
 import androidx.wear.protolayout.DimensionBuilders
@@ -139,33 +138,11 @@ object ExtrasTileRenderer {
         }
 
         // Outer box: padding to keep content inside the round canvas safe area.
-        // Whole-tile Clickable launches ZonesActivity for the full scrollable list.
-        // Tile swipes still work because the tile system intercepts horizontal swipe
-        // gestures before they reach this Clickable — only taps land here.
-        val openZonesClickable = ModifiersBuilders.Clickable.Builder()
-            .setId("open_zones")
-            .setOnClick(
-                ActionBuilders.LaunchAction.Builder()
-                    .setAndroidActivity(
-                        ActionBuilders.AndroidActivity.Builder()
-                            .setPackageName("com.guil.globetrotting")
-                            .setClassName("com.guil.globetrotting.zones.ZonesActivity")
-                            .build(),
-                    )
-                    .build(),
-            )
-            .build()
-
         return Box.Builder()
             .setWidth(expand())
             .setHeight(expand())
             .setHorizontalAlignment(HORIZONTAL_ALIGN_CENTER)
             .setVerticalAlignment(VERTICAL_ALIGN_CENTER)
-            .setModifiers(
-                ModifiersBuilders.Modifiers.Builder()
-                    .setClickable(openZonesClickable)
-                    .build(),
-            )
             .addContent(
                 Box.Builder()
                     .setWidth(expand())

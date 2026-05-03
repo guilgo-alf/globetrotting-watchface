@@ -1,49 +1,75 @@
 package com.guil.globetrotting.watchface
 
-import android.graphics.Canvas
-import android.graphics.Rect
+import android.content.Context
+import android.graphics.Color
 import android.graphics.RectF
-import androidx.wear.watchface.CanvasComplication
 import androidx.wear.watchface.CanvasComplicationFactory
 import androidx.wear.watchface.ComplicationSlot
 import androidx.wear.watchface.ComplicationSlotsManager
 import androidx.wear.watchface.complications.ComplicationSlotBounds
-import androidx.wear.watchface.RenderParameters
 import androidx.wear.watchface.complications.DefaultComplicationDataSourcePolicy
-import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationType
+import androidx.wear.watchface.complications.rendering.CanvasComplicationDrawable
+import androidx.wear.watchface.complications.rendering.ComplicationDrawable
 import androidx.wear.watchface.style.CurrentUserStyleRepository
-import java.time.ZonedDateTime
 
 /**
  * Complication slot configuration.
  *
- * The watch face's status line shows four fields: `steps · temp · watchBattery · phoneBattery`.
- *   - steps + watchBattery come from on-device providers (real and free)
- *   - temp + phoneBattery come from complications (user-configurable on real watch)
+ * Status line shows four fields: `steps · temp · watchBattery · phoneBattery`.
+ *   - steps + watchBattery come from on-device providers
+ *   - temp + phoneBattery come from complications (user-fillable on real watch)
  *
- * Slots are rendered as NO-OP (see NoOpCanvasComplication) — the status line text
- * itself is drawn by `StatusLineLayout` which reads the complication value from
- * the slot's `complicationData.value` and bakes it into the unified text. The
- * slots exist purely so the system editor lets the user pick providers.
+ * Each slot uses [CanvasComplicationDrawable] (the AOSP-standard implementation
+ * that handles the slot's data-loading state machine correctly). The
+ * underlying [ComplicationDrawable] is configured transparently — colours all
+ * Color.TRANSPARENT — so the library does the data plumbing without painting
+ * a visible chip. The renderer reads each slot's `complicationData.value` and
+ * bakes it into the unified status line text drawn by StatusLineLayout.
  *
- * Bounds are normalised 0..1 over the canvas, positioned roughly where the values
- * appear in the status line. The system editor uses these as tap targets when the
- * user long-presses the face → Customize.
+ * History: a previous attempt with a custom NoOp CanvasComplication hung the
+ * watch face bind on real Wear OS 5 (10s timeout, error code 4) because it
+ * didn't advance the slot's internal data-loading state. CanvasComplicationDrawable
+ * does, so the bind completes cleanly.
  */
 object ComplicationSlots {
 
     const val WEATHER_SLOT_ID = 1
     const val PHONE_BATTERY_SLOT_ID = 2
 
-    // Status line is at y ≈ 119/480 ≈ 0.248. Tap zones span ~12% width × 8% height
-    // each, centred on where the value sits in the unified text. These overlap the
-    // text — that's intentional, so the tap target visually covers the value.
+    // Status line is at y ≈ 119/480 ≈ 0.248. Tap zones span ~13% width × 8% height
+    // each, centred where the value sits in the unified text. Bounds are tap-targets
+    // in the system editor; they don't need to match where the rendered chip would
+    // sit because the chip is invisible anyway.
     private val WEATHER_BOUNDS = RectF(0.42f, 0.21f, 0.55f, 0.29f)
     private val PHONE_BATTERY_BOUNDS = RectF(0.66f, 0.21f, 0.79f, 0.29f)
 
-    fun build(currentUserStyleRepository: CurrentUserStyleRepository): ComplicationSlotsManager {
-        val factory = CanvasComplicationFactory { _, _ -> NoOpCanvasComplication }
+    fun build(
+        context: Context,
+        currentUserStyleRepository: CurrentUserStyleRepository,
+    ): ComplicationSlotsManager {
+        val factory = CanvasComplicationFactory { watchState, invalidateCallback ->
+            // Transparent drawable: the framework still tracks data state correctly
+            // (so the bind completes), but every visible component renders as
+            // Color.TRANSPARENT — the library draws nothing in the slot bounds.
+            val drawable = ComplicationDrawable(context).apply {
+                activeStyle.backgroundColor = Color.TRANSPARENT
+                activeStyle.borderColor = Color.TRANSPARENT
+                activeStyle.textColor = Color.TRANSPARENT
+                activeStyle.titleColor = Color.TRANSPARENT
+                activeStyle.iconColor = Color.TRANSPARENT
+                activeStyle.rangedValuePrimaryColor = Color.TRANSPARENT
+                activeStyle.rangedValueSecondaryColor = Color.TRANSPARENT
+                ambientStyle.backgroundColor = Color.TRANSPARENT
+                ambientStyle.borderColor = Color.TRANSPARENT
+                ambientStyle.textColor = Color.TRANSPARENT
+                ambientStyle.titleColor = Color.TRANSPARENT
+                ambientStyle.iconColor = Color.TRANSPARENT
+                ambientStyle.rangedValuePrimaryColor = Color.TRANSPARENT
+                ambientStyle.rangedValueSecondaryColor = Color.TRANSPARENT
+            }
+            CanvasComplicationDrawable(drawable, watchState, invalidateCallback)
+        }
 
         val weather = ComplicationSlot.createRoundRectComplicationSlotBuilder(
             id = WEATHER_SLOT_ID,
@@ -71,40 +97,5 @@ object ComplicationSlots {
             listOf(weather, phoneBattery),
             currentUserStyleRepository,
         )
-    }
-}
-
-/**
- * Renders nothing. We use the complication slot purely as a "data carrier" + tap-target
- * for the system editor, then read its value out and bake it into the status line text
- * ourselves so the visual stays a single unified line of OpenDyslexic text rather than
- * 4 disparate complication chips.
- */
-private object NoOpCanvasComplication : CanvasComplication {
-    override fun render(
-        canvas: Canvas,
-        bounds: Rect,
-        zonedDateTime: ZonedDateTime,
-        renderParameters: RenderParameters,
-        slotId: Int,
-    ) {
-        // No-op by design.
-    }
-
-    override fun drawHighlight(
-        canvas: Canvas,
-        bounds: Rect,
-        boundsType: Int,
-        zonedDateTime: ZonedDateTime,
-        color: Int,
-    ) {
-        // No-op — system editor draws its own highlights over the slot bounds.
-    }
-
-    override fun getData(): ComplicationData =
-        androidx.wear.watchface.complications.data.NoDataComplicationData()
-
-    override fun loadData(complicationData: ComplicationData, loadDrawablesAsynchronous: Boolean) {
-        // We read the data straight off the slot's StateFlow in the renderer instead.
     }
 }

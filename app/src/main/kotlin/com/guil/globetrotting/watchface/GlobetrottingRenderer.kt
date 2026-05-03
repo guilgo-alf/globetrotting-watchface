@@ -3,6 +3,7 @@ package com.guil.globetrotting.watchface
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Rect
+import android.os.Build
 import android.view.SurfaceHolder
 import androidx.wear.watchface.CanvasType
 import androidx.wear.watchface.ComplicationSlotsManager
@@ -62,6 +63,27 @@ class GlobetrottingRenderer(
     // unregister race exits before calling invalidate() on a destroyed renderer.
     @Volatile private var destroyed = false
 
+    // Detects the Android Studio AVD (any Wear OS emulator) — used to enable
+    // "preview / screenshot mode" so screenshots show feature-complete state
+    // (compass visible at static 0°, believable step count) regardless of what
+    // the real sensors are doing.
+    private val isPreviewEmulator: Boolean =
+        Build.FINGERPRINT.contains("generic", ignoreCase = true) ||
+            Build.MODEL.contains("sdk", ignoreCase = true) ||
+            Build.HARDWARE == "ranchu" ||
+            Build.HARDWARE == "goldfish"
+
+    // Render the compass arc?
+    //   - Emulator: yes, frozen at initial 0° (12 o'clock) — screenshots show the
+    //     feature without sensor jitter
+    //   - Real watch: no — Galaxy Watch 6 Classic's metallic bezel sits millimetres
+    //     from the magnetometer and gives unreliable readings without figure-8
+    //     calibration; disabled until proper calibration UX exists
+    private val enableCompass = isPreviewEmulator
+    // Register the magnetometer? Always false for now: emulator screenshots want
+    // a static arc, real watch is fighting the calibration issue. Flip on later.
+    private val registerCompassSensor = false
+
     // Don't redraw on sub-degree noise — one screen pixel of arc movement at r=216
     // corresponds to ~0.27°, so 0.5° is the smallest change worth invalidating for.
     private val MIN_BEARING_DELTA_DEG = 0.5f
@@ -85,7 +107,7 @@ class GlobetrottingRenderer(
         statusLineLayout.draw(canvas, state)
         bigTimeLayout.draw(canvas, state)
         timezoneGridLayout.draw(canvas, state)
-        compassOverlayLayout.draw(canvas, state)
+        if (enableCompass) compassOverlayLayout.draw(canvas, state)
         canvas.restore()
     }
 
@@ -102,22 +124,24 @@ class GlobetrottingRenderer(
     private fun syncSensors(active: Boolean) {
         if (active && !sensorsActive) {
             stepsProvider.start()
-            compassSensorManager.start { bearing ->
-                // Defensive: if onDestroy raced with an in-flight sensor event, exit
-                // before invalidate() — the renderer's surface may be gone.
-                if (destroyed) return@start
-                val previous = currentBearing
-                currentBearing = bearing
-                // Skip invalidate for tiny bearing jitter so we don't redraw 60 fps
-                // on sensor noise — only change > 0.5° actually moves the arc visibly.
-                val delta = if (previous == null) Float.MAX_VALUE
-                else angularDelta(previous, bearing)
-                if (delta >= MIN_BEARING_DELTA_DEG) invalidate()
+            if (registerCompassSensor) {
+                compassSensorManager.start { bearing ->
+                    // Defensive: if onDestroy raced with an in-flight sensor event, exit
+                    // before invalidate() — the renderer's surface may be gone.
+                    if (destroyed) return@start
+                    val previous = currentBearing
+                    currentBearing = bearing
+                    // Skip invalidate for tiny bearing jitter so we don't redraw 60 fps
+                    // on sensor noise — only change > 0.5° actually moves the arc visibly.
+                    val delta = if (previous == null) Float.MAX_VALUE
+                    else angularDelta(previous, bearing)
+                    if (delta >= MIN_BEARING_DELTA_DEG) invalidate()
+                }
             }
             sensorsActive = true
         } else if (!active && sensorsActive) {
             stepsProvider.stop()
-            compassSensorManager.stop()
+            if (registerCompassSensor) compassSensorManager.stop()
             // Keep last known bearing — don't null it. This way the arc still renders
             // pointing somewhere when the face wakes up before the sensor fires again.
             sensorsActive = false
@@ -133,9 +157,15 @@ class GlobetrottingRenderer(
 
     private fun buildRenderState(zdt: ZonedDateTime, isAmbient: Boolean): RenderState {
         val localZdt = ZonedDateTime.ofInstant(Instant.from(zdt), ZoneId.systemDefault())
-        // The AVD has no step sensor, so substitute a believable value. On real
-        // hardware, stepsProvider.stepsToday() returns the real count.
-        val steps = stepsProvider.stepsToday().takeIf { it > 0 } ?: 1_445
+        // Steps:
+        //   - Emulator → believable placeholder (17,456) for screenshot purposes
+        //   - Real watch with sensor → live count (even 0 is truthful)
+        //   - Hardware without sensor → fallback placeholder
+        val steps = when {
+            isPreviewEmulator -> 17_456
+            stepsProvider.hasSensor() -> stepsProvider.stepsToday()
+            else -> 17_456
+        }
         // Read complication slots (weather + phone battery). Slots are user-fillable
         // via the long-press editor on real watch — Phone Hub for phone battery,
         // Google Weather (or similar) for temperature. On the emulator the slots are

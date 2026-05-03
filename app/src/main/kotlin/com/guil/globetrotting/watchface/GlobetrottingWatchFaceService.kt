@@ -16,7 +16,7 @@ class GlobetrottingWatchFaceService : WatchFaceService() {
     override fun createComplicationSlotsManager(
         currentUserStyleRepository: CurrentUserStyleRepository,
     ): ComplicationSlotsManager =
-        ComplicationSlots.build(currentUserStyleRepository)
+        ComplicationSlots.build(applicationContext, currentUserStyleRepository)
 
     override suspend fun createWatchFace(
         surfaceHolder: SurfaceHolder,

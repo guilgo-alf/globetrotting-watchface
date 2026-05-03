@@ -5,6 +5,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.util.Log
 
 class CompassSensorManager(context: Context) {
 
@@ -40,7 +41,16 @@ class CompassSensorManager(context: Context) {
             listener.invoke(smoother.update(normalised))
         }
 
-        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+            // Log to diagnose "floating all over" complaints. Accuracy values:
+            //   0 = SENSOR_STATUS_UNRELIABLE (compass needs figure-8 calibration)
+            //   1 = SENSOR_STATUS_ACCURACY_LOW
+            //   2 = SENSOR_STATUS_ACCURACY_MEDIUM
+            //   3 = SENSOR_STATUS_ACCURACY_HIGH
+            // If you see 0 or 1 in logcat, the compass is uncalibrated — wave the
+            // watch in a figure-8 pattern several times to calibrate it.
+            Log.i("CompassSensor", "Accuracy: $accuracy")
+        }
     }
 
     fun start(onBearingUpdate: (Float) -> Unit) {

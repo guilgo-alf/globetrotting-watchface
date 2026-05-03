@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Globetrotting Minimalist</string>
-    <string name="watch_face_name">Globetrotting Minimalist</string>
-    <string name="tile_name">Globetrotting Timezones</string>
+    <string name="app_name">Globetrotter v2</string>
+    <string name="watch_face_name">Globetrotter v2</string>
+    <string name="tile_name">Globetrotter Timezones</string>
 </resources>
