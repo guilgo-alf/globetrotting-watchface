@@ -57,5 +57,14 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
+# Grant ACTIVITY_RECOGNITION so the step counter actually receives events on
+# Android 10+. Without this, StepsProvider.stepsToday() silently returns 0
+# forever on the real watch. Idempotent — safe to run on every install.
+Write-Host "Granting ACTIVITY_RECOGNITION (required for step counter on Android 10+)..."
+& $adb shell pm grant com.guil.globetrotting android.permission.ACTIVITY_RECOGNITION
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Permission grant returned $LASTEXITCODE — likely already granted or not yet supported. Continuing."
+}
+
 Write-Host ""
 Write-Host "Done. On the watch: long-press current face -> scroll to 'Globetrotting Minimalist' -> tap."

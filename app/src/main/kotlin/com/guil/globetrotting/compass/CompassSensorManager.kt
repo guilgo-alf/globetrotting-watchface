@@ -19,6 +19,10 @@ class CompassSensorManager(context: Context) {
     private val sensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             if (event.sensor.type != Sensor.TYPE_ROTATION_VECTOR) return
+            // Snapshot the listener locally so a concurrent stop() can null it
+            // without racing against the dispatch below — if it's already null
+            // we exit early instead of calling a stale callback.
+            val listener = bearingListener ?: return
 
             val rotationMatrix = FloatArray(9)
             SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
@@ -33,7 +37,7 @@ class CompassSensorManager(context: Context) {
             // last good value rather than becoming NaN and hiding the arc.
             if (azimuthDeg.isNaN() || azimuthDeg.isInfinite()) return
             val normalised = (azimuthDeg + 360f) % 360f
-            bearingListener?.invoke(smoother.update(normalised))
+            listener.invoke(smoother.update(normalised))
         }
 
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
@@ -53,8 +57,11 @@ class CompassSensorManager(context: Context) {
     }
 
     fun stop() {
-        sensorManager.unregisterListener(sensorListener)
+        // Null the listener BEFORE unregistering so any in-flight sensor callback
+        // on the sensor thread sees null and returns early (see snapshot in
+        // onSensorChanged). Then unregister, which is idempotent.
         bearingListener = null
+        sensorManager.unregisterListener(sensorListener)
         smoother.reset()
     }
 }

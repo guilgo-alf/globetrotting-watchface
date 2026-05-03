@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import androidx.wear.protolayout.ActionBuilders
 import androidx.wear.protolayout.ColorBuilders
 import androidx.wear.protolayout.ColorBuilders.argb
 import androidx.wear.protolayout.DimensionBuilders
@@ -54,6 +55,16 @@ object ExtrasTileRenderer {
     // For the minutes that echo the home-zone minute: pure black on AMOLED black
     // makes them invisible. The hour stays, the redundant minutes vanish.
     private val INVISIBLE = argb(0xFF000000L.toInt())
+
+    // Pill background tint and the linked corner-fill colour for highlighted bands.
+    // RGB_565 has no alpha channel, so the band bitmap can't blend transparently into
+    // the pill — instead we paint its rounded-clip corners with the colour the pill
+    // tint produces when composited over black. If you change PILL_TINT_ARGB, you MUST
+    // update PILL_TINT_OVER_BLACK_RGB. Composite formula (per channel):
+    //   r = (a/255) * tint_r + (1 - a/255) * 0 = (0x22/255) * 0xEA ≈ 0x1F
+    // 0x1C is rounded down a hair so the corner doesn't appear lighter than the pill.
+    private const val PILL_TINT_ARGB = 0x22EAEAEAL
+    private const val PILL_TINT_OVER_BLACK_RGB = "#1C1C1C"
 
     private val HEADER_TIME_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     private val HEADER_DATE_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE dd")
@@ -128,11 +139,33 @@ object ExtrasTileRenderer {
         }
 
         // Outer box: padding to keep content inside the round canvas safe area.
+        // Whole-tile Clickable launches ZonesActivity for the full scrollable list.
+        // Tile swipes still work because the tile system intercepts horizontal swipe
+        // gestures before they reach this Clickable — only taps land here.
+        val openZonesClickable = ModifiersBuilders.Clickable.Builder()
+            .setId("open_zones")
+            .setOnClick(
+                ActionBuilders.LaunchAction.Builder()
+                    .setAndroidActivity(
+                        ActionBuilders.AndroidActivity.Builder()
+                            .setPackageName("com.guil.globetrotting")
+                            .setClassName("com.guil.globetrotting.zones.ZonesActivity")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build()
+
         return Box.Builder()
             .setWidth(expand())
             .setHeight(expand())
             .setHorizontalAlignment(HORIZONTAL_ALIGN_CENTER)
             .setVerticalAlignment(VERTICAL_ALIGN_CENTER)
+            .setModifiers(
+                ModifiersBuilders.Modifiers.Builder()
+                    .setClickable(openZonesClickable)
+                    .build(),
+            )
             .addContent(
                 Box.Builder()
                     .setWidth(expand())
@@ -219,7 +252,7 @@ object ExtrasTileRenderer {
                     ModifiersBuilders.Modifiers.Builder()
                         .setBackground(
                             ModifiersBuilders.Background.Builder()
-                                .setColor(argb(0x22EAEAEAL.toInt()))
+                                .setColor(argb(PILL_TINT_ARGB.toInt()))
                                 .setCorner(
                                     ModifiersBuilders.Corner.Builder()
                                         .setRadius(dp(12f))
@@ -270,7 +303,11 @@ object ExtrasTileRenderer {
     private fun timeContent(row: RowData, primary: ColorBuilders.ColorProp): LayoutElement {
         val hourStr = row.zonedTime.hour.toString()
         val mmStr = String.format(java.util.Locale.ROOT, "%02d", row.zonedTime.minute)
-        if (!row.dimMinutes) {
+        // Highlighted row always renders the full time in primary — skipping the
+        // dim-minutes rule because the highlighted row trivially matches the home
+        // minute (it IS the home zone in many cases) and we don't want to hide its
+        // minutes for that reason.
+        if (!row.dimMinutes || row.highlighted) {
             return text("$hourStr$mmStr", primary, sizeSp = 12, bold = row.highlighted)
         }
         return Row.Builder()
@@ -327,19 +364,6 @@ object ExtrasTileRenderer {
             .setWidth(dp(sizeDp.toFloat()))
             .build()
 
-    /** Format offset like `+ 5:30`, `− 7`. Empty string when delta is zero (the highlighted local row). */
-    fun formatOffset(deltaSeconds: Int): String {
-        if (deltaSeconds == 0) return ""
-        val sign = if (deltaSeconds < 0) "−" else "+"
-        val absHours = Math.abs(deltaSeconds) / 3600
-        val absMins = (Math.abs(deltaSeconds) % 3600) / 60
-        return if (absMins == 0) {
-            "$sign $absHours"
-        } else {
-            String.format(Locale.ROOT, "%s %d:%02d", sign, absHours, absMins)
-        }
-    }
-
     fun headerTime(local: ZonedDateTime): String = local.format(HEADER_TIME_FMT)
 
     fun headerSub(zoneAbbr: String, city: String, local: ZonedDateTime): String {
@@ -384,12 +408,12 @@ object ExtrasTileRenderer {
         val h = 12
         val bm = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565)
         val c = Canvas(bm)
-        // The pixels outside the rounded clip stay this colour. RGB_565 has no alpha,
-        // so we have to predict what's BEHIND the band: black on regular rows, but on
-        // the highlighted row it's the pill's #22EAEAEA tint composited over black,
-        // which renders as roughly #1C1C1C. Painting the corners to match means the
-        // rounded corners blend invisibly into the pill instead of showing as cut-outs.
-        val cornerFill = if (highlighted) Color.parseColor("#1C1C1C") else Color.BLACK
+        // RGB_565 has no alpha — the corners outside the rounded clip can't be
+        // transparent. Paint them the colour we EXPECT to be behind the band, so the
+        // rounded clip blends invisibly into the row background. See the constant
+        // PILL_TINT_OVER_BLACK_RGB at the top — those two values are paired.
+        val cornerFill = if (highlighted) Color.parseColor(PILL_TINT_OVER_BLACK_RGB)
+        else Color.BLACK
         c.drawColor(cornerFill)
 
         // Clip outer pill — corners outside fall through to the black bg, so they
@@ -419,16 +443,19 @@ object ExtrasTileRenderer {
             innerCorner, innerCorner, workPaint,
         )
 
-        // Now-dot — colour signals reachability:
-        //   • inside working hours → "available" green (Slack-style)
-        //   • outside → white, with a thin black stroke for contrast against the rail.
-        // The stroke colour follows the fill family so the green dot stays a coherent
-        // green object instead of a green pill outlined in black.
+        // Now-dot — colour signals work mode:
+        //   • Black dot from exactly 09:00 → 16:30 (the "deep work" window)
+        //   • White dot otherwise, including the last 30 min of the working block —
+        //     wind-down phase reads as "available again" before the amber bar ends.
+        // Asymmetric on purpose: no pre-emptive flip at the start of the day, but
+        // an early flip on the way out so the wind-down is visible.
         val nowFraction = (zonedTime.hour + zonedTime.minute / 60f) / 24f
         val nowX = nowFraction * w
         val dotRadius = 4f
-        val isInWorkingHours = nowFraction in (9f / 24f)..(17f / 24f)
-        val (dotFillColor, dotStrokeColor) = if (isInWorkingHours) {
+        val deepWorkStart = 9f / 24f          // 09:00 sharp
+        val deepWorkEnd = 16.5f / 24f          // 16:30 (30 min before amber bar ends)
+        val isDeepWork = nowFraction in deepWorkStart..deepWorkEnd
+        val (dotFillColor, dotStrokeColor) = if (isDeepWork) {
             // Black on yellow — strongest possible contrast, reads as a deliberate
             // marker rather than a status indicator.
             Color.BLACK to Color.BLACK

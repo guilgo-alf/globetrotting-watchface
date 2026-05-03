@@ -32,10 +32,14 @@ class StatusLineLayout(context: Context) {
     }
 
     private fun formatStatusLine(state: RenderState): String {
+        // Four-field format: steps · weather · watchBattery · phoneBattery.
+        // Real on the watch: stepCount + watchBatteryPct. Placeholder until DataLayer
+        // (phone battery) and a Complication slot (weather) get wired — see RenderState.
+        // Nullable fields fall back to "--" so the row never disappears or shifts.
         val steps = String.format(java.util.Locale.ENGLISH, "%,d", state.stepCount)
         val temp = state.weatherTempC?.let { "${it}°C" } ?: "--°C"
-        val watch = state.watchBatteryPct.toString()
-        val phone = state.phoneBatteryPct?.toString() ?: "--"
+        val watch = "${state.watchBatteryPct}%"
+        val phone = state.phoneBatteryPct?.let { "${it}%" } ?: "--%"
         return "$steps $SEP $temp $SEP $watch $SEP $phone"
     }
 

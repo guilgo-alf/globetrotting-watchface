@@ -1,6 +1,11 @@
 package com.guil.globetrotting.tile
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import androidx.concurrent.futures.ResolvableFuture
+import androidx.core.content.ContextCompat
 import androidx.wear.protolayout.LayoutElementBuilders
 import androidx.wear.protolayout.ResourceBuilders
 import androidx.wear.protolayout.TimelineBuilders
@@ -12,6 +17,42 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 
 class ExtrasTileService : TileService() {
+
+    /**
+     * Bust the tile cache when the system timezone or locale changes. Without this,
+     * after the user travels and the watch's system timezone updates, the tile
+     * shows the previous "highlighted local zone" until the 60s freshness expires.
+     * The receiver re-requests an immediate tile update so the highlight follows.
+     */
+    private val timezoneReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            getUpdater(applicationContext)
+                .requestUpdate(ExtrasTileService::class.java)
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            addAction(Intent.ACTION_LOCALE_CHANGED)
+        }
+        ContextCompat.registerReceiver(
+            this,
+            timezoneReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    override fun onDestroy() {
+        try {
+            unregisterReceiver(timezoneReceiver)
+        } catch (e: IllegalArgumentException) {
+            // Receiver not registered — nothing to do.
+        }
+        super.onDestroy()
+    }
 
     override fun onTileRequest(
         requestParams: RequestBuilders.TileRequest,
@@ -54,7 +95,6 @@ class ExtrasTileService : TileService() {
         val localZone = ZoneId.systemDefault()
         val saved = TimezoneTileConfig.SAVED_ZONES
         val localOffsetSeconds = now.offset.totalSeconds
-        val isInSaved = saved.any { it.zoneId == localZone }
 
         // Reference minute = home (CET/CEST) zone's current minute. Rows that share
         // this minute have their :mm rendered dimmer to reduce visual repetition.
@@ -196,6 +236,7 @@ class ExtrasTileService : TileService() {
             "America/Honolulu" to ("HST" to "HST"),
             "America/Toronto" to ("EST" to "EDT"),
             "America/Mexico_City" to ("CST" to "CDT"),
+            "America/Costa_Rica" to ("PVT" to "PVT"),
             "America/Sao_Paulo" to ("BRT" to "BRT"),
             "America/Argentina/Buenos_Aires" to ("ART" to "ART"),
             "Asia/Tokyo" to ("JST" to "JST"),

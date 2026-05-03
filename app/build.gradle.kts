@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
@@ -47,6 +48,7 @@ android {
 
     buildFeatures {
         buildConfig = true
+        compose = true
     }
 
     sourceSets {
@@ -73,4 +75,14 @@ dependencies {
     implementation("androidx.wear.protolayout:protolayout-material:1.2.1")
     implementation("androidx.wear.protolayout:protolayout-expression:1.2.1")
     implementation("androidx.concurrent:concurrent-futures:1.2.0")
+
+    // Compose for Wear OS — used by ZonesActivity (the scrollable full timezone list).
+    val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
+    implementation(composeBom)
+    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.wear.compose:compose-foundation:1.4.0")
+    implementation("androidx.wear.compose:compose-material:1.4.0")
 }

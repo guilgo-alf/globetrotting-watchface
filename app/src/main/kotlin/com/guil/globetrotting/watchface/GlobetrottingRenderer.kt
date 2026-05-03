@@ -54,6 +54,9 @@ class GlobetrottingRenderer(
     // first sensor reading overrides this within ~50 ms.
     @Volatile private var currentBearing: Float? = 0f
     private var sensorsActive = false
+    // Set true in onDestroy so any in-flight sensor callback that survives the
+    // unregister race exits before calling invalidate() on a destroyed renderer.
+    @Volatile private var destroyed = false
 
     // Don't redraw on sub-degree noise — one screen pixel of arc movement at r=216
     // corresponds to ~0.27°, so 0.5° is the smallest change worth invalidating for.
@@ -87,6 +90,7 @@ class GlobetrottingRenderer(
     }
 
     override fun onDestroy() {
+        destroyed = true
         syncSensors(active = false)
         super.onDestroy()
     }
@@ -95,6 +99,9 @@ class GlobetrottingRenderer(
         if (active && !sensorsActive) {
             stepsProvider.start()
             compassSensorManager.start { bearing ->
+                // Defensive: if onDestroy raced with an in-flight sensor event, exit
+                // before invalidate() — the renderer's surface may be gone.
+                if (destroyed) return@start
                 val previous = currentBearing
                 currentBearing = bearing
                 // Skip invalidate for tiny bearing jitter so we don't redraw 60 fps
@@ -122,18 +129,23 @@ class GlobetrottingRenderer(
 
     private fun buildRenderState(zdt: ZonedDateTime, isAmbient: Boolean): RenderState {
         val localZdt = ZonedDateTime.ofInstant(Instant.from(zdt), ZoneId.systemDefault())
-        // TEMP for emulator preview — fills the status line with believable values
-        // since the emulator has no step sensor and no complication providers wired.
-        // Replace with real provider/complication data on the real watch.
-        val stepsForPreview = stepsProvider.stepsToday().takeIf { it > 0 } ?: 1_445
-        val tempForPreview = 22
-        val phoneBatteryForPreview = 20
+        // The AVD has no step sensor, so substitute a believable value. On real
+        // hardware, stepsProvider.stepsToday() returns the real count.
+        val steps = stepsProvider.stepsToday().takeIf { it > 0 } ?: 1_445
+        // Plausible placeholders so the 4-element status line reads as designed in
+        // the emulator. On real hardware these get replaced by:
+        //   - phoneBattery: Wear DataLayer message exchange with the paired phone
+        //   - weather: a Complication slot
+        // Until that wiring lands, the constants below are realistic defaults — a
+        // Maastricht spring temp and a half-charged phone battery.
+        val emulatorPlaceholderPhoneBattery = 65
+        val emulatorPlaceholderWeatherC = 22
         return RenderState(
             now = localZdt,
             watchBatteryPct = batteryProvider.currentPercent(),
-            phoneBatteryPct = phoneBatteryForPreview,
-            stepCount = stepsForPreview,
-            weatherTempC = tempForPreview,
+            stepCount = steps,
+            phoneBatteryPct = emulatorPlaceholderPhoneBattery,
+            weatherTempC = emulatorPlaceholderWeatherC,
             compassBearingDeg = currentBearing,
             isAmbient = isAmbient,
         )

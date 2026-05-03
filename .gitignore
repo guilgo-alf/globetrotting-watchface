@@ -14,3 +14,8 @@ keystore.properties
 # Build/diagnostic logs from local runs
 bootstrap.log
 logcat.txt
+
+# Local debug screenshots captured via `adb exec-out screencap`
+debug-*.png
+final-*.png
+activity-*.png

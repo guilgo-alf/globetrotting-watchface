@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Theme used by ZonesActivity. Edge-to-edge on the round Wear OS screen, no title
+        bar, black window background so Compose always paints over a known surface.
+        The activity also calls WindowCompat.setDecorFitsSystemWindows(window, false)
+        so Compose owns the full canvas.
+    -->
+    <style name="WearActivityTheme" parent="@android:style/Theme.DeviceDefault">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowActionBar">false</item>
+    </style>
+</resources>

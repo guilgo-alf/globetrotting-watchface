@@ -122,22 +122,42 @@ The timezone block is a **three-column grid**, not a single column. Date `SAT 02
 
 ## 11 — Session goals — STATUS
 
-All five sessions shipped end-to-end:
+All seven sessions shipped end-to-end:
 
 - **Session 1** ✅ — minimal time-only face. Black background, `Hmm` time, seconds superscript.
 - **Session 2** ✅ — status line + date. Timezone grid stripped at user request for a cleaner symmetrical look (data structure kept in `TimezoneConfig.kt` for future re-add).
 - **Session 3** ✅ — real stats providers (`BatteryProvider`, `StepsProvider`) plus invisible complication slots for weather + phone battery. AOD already covered by per-layout `isAmbient` checks.
-- **Session 4** ✅ — `CompassSensorManager` (`TYPE_ROTATION_VECTOR`), `BearingSmoother` (α=0.15 low-pass), `CompassOverlayLayout` (6 px amber dot at radius 220). Lifecycle: starts when visible+interactive, stops on ambient/hidden/destroy.
-- **Session 5** ✅ — `ExtrasTileService` with three bonus zones (Tokyo / Mexico / London), steps-vs-goal, watch + phone battery, long-form date. Built with `androidx.wear.protolayout` 1.2.1, refresh interval 60 s.
+- **Session 4** ✅ — `CompassSensorManager` (`TYPE_ROTATION_VECTOR`), `BearingSmoother` (α=0.10 low-pass), `CompassOverlayLayout` initially a 6 px amber dot, later refactored to a stroked red arc rotated around canvas centre.
+- **Session 5** ✅ — `ExtrasTileService` with rich timezone band visualisation, DST-aware abbreviations, deep-work dot rule (black 09:00–16:30, white otherwise), home-minute echo collapse.
+- **Session 6** ✅ — `ZonesActivity` companion screen — Wear Compose `ScalingLazyColumn` with rotary bezel input, ~36 curated timezones, tap-to-open from tile.
+- **Session 7** ✅ — pre-ship hardening pass. See §11c.
 
 ## 11a — Spec deviations from the original brief
 
 Recorded so the next session can pick up cleanly:
 
-1. **Status line content**: brief said `{steps} · {tempC}°C · {hr} · {batteryPct}` — user dropped HR, requested watch+phone battery instead. Final format: `{steps} · {tempC}°C · {watchBatteryPct} · {phoneBatteryPct}`. `HeartRateProvider` was never written.
-2. **Timezone grid**: stripped to date-only for symmetry (status / time / date as three centred elements). `DEFAULT_ZONES` and `GRID_CELLS` kept in code, just not referenced. Re-introducing the grid is a one-line change to `GRID_CELLS`.
-3. **Layout tokens**: ended at 130 px big time (was 130 in brief, briefly 180), -10 letter tracking (was -2), 215 px centre Y (was 235). OpenDyslexic is wider than the Facer original's font, so brief coords needed compression.
-4. **Tile content**: brief had HR; we serve watch+phone battery instead, mirroring the face status line.
+1. **Status line content**: brief said `{steps} · {tempC}°C · {hr} · {batteryPct}`. After §11c, the watch face status line is **`{steps} · {watchBatteryPct}%`** — phone battery and weather were dropped because they have no real on-device data source. Restoring them needs DataLayer (phone battery via paired-phone messaging) or a complication source for weather.
+2. **Timezone grid**: stripped to date-only for symmetry (status / time / date as three centred elements). `DEFAULT_ZONES` and `GRID_CELLS` kept in `watchface/data/TimezoneConfig.kt`, just not referenced. Re-introducing the grid is a one-line change to `GRID_CELLS`.
+3. **Layout tokens**: ended at 160 px big time, -13 letter tracking, 221 px centre Y. OpenDyslexic is wider than the Facer original's font, so brief coords needed compression.
+4. **Tile content**: 8 saved zones, west-to-east. Tap opens `ZonesActivity` for the full ~36-zone scrollable list.
+
+## 11c — Pre-ship hardening pass (Session 7)
+
+Trail of decisions made before sideloading to real Galaxy Watch 6 Classic:
+
+1. **Dropped fake fields from status line** — `phoneBatteryForPreview = 20` and `tempForPreview = 22` were stubs that would lie permanently on real hardware. New format: `{steps} · {watchBatteryPct}%`.
+2. **CET/CEST flag stays 🇪🇺 always** — `resolveCetFlag()` was dead code (defined, never called); deleted along with `cityFromZone()` and the `cityOverride` field on `SavedZone`.
+3. **Tile cache busts on `ACTION_TIMEZONE_CHANGED`** — `ExtrasTileService` registers a `BroadcastReceiver` (with `ACTION_LOCALE_CHANGED` too) so the highlighted local row follows when the user travels. Replaces the previous "wait 60 s for freshness" fallback.
+4. **`ZonesActivity` rotary bezel wired up** — `Modifier.rotaryScrollable` + `FocusRequester` requested in a `LaunchedEffect`. Without this the bezel rotated but no scroll happened.
+5. **Wear-specific theme** — created `res/values/themes.xml` with `WearActivityTheme`; activity declares `WindowCompat.setDecorFitsSystemWindows(window, false)` for proper round-screen edge-to-edge.
+6. **`ACTIVITY_RECOGNITION` runtime grant via install script** — both `install.ps1` and `install.sh` run `adb shell pm grant com.guil.globetrotting android.permission.ACTIVITY_RECOGNITION` after install. Without this, `StepsProvider` silently returns 0 on Android 10+.
+7. **Sensor lifecycle hardening** — `CompassSensorManager.stop()` nulls the listener before unregistering; `onSensorChanged` snapshots locally for atomic null check. `GlobetrottingRenderer` adds a `destroyed` flag so any in-flight sensor callback after destroy returns early.
+8. **De-duplicated `formatOffset`** — moved to top-level in `TimezoneTileConfig.kt`, consumed by both `ExtrasTileRenderer` and `ZonesActivity`.
+9. **Linked the band corner-fill kludge to its source colour** — `PILL_TINT_ARGB` and `PILL_TINT_OVER_BLACK_RGB` are now paired constants with a comment linking them. RGB_565 has no alpha so the band corners can't be transparent; this is the cleanest way to keep the two values from drifting silently.
+10. **ProGuard rules pre-loaded** — minify is still off in release, but `proguard-rules.pro` now contains the full keep set for watch-face binders, tile binders, Compose, Wear Compose, and our entry-point services. Trapdoor for if minify ever flips on.
+11. **`BatteryProvider` Integer.MIN_VALUE sentinel** — explicit early return on the unsupported-property case rather than relying on `coerceIn` clamping to 0.
+12. **`ZonesActivity` column widths fixed for OpenDyslexic** — code column bumped 34dp → 50dp with `maxLines=1` so 4-letter codes (AKDT, NZDT, AEDT) don't soft-wrap onto two lines.
+13. **Wear Compose 1.4.0** — left at 1.4.0; the `rotaryScrollable` API and `RotaryScrollableDefaults` are stable in this version.
 
 ## 11b — Known environmental gotcha: Wear OS 5 emulator
 

@@ -25,4 +25,12 @@ fi
 
 echo "Installing $APK..."
 "$ADB" install -r "$APK"
+
+# Grant ACTIVITY_RECOGNITION so the step counter actually receives events on
+# Android 10+. Without this, StepsProvider.stepsToday() returns 0 forever on
+# real hardware. Idempotent — safe to re-run.
+echo "Granting ACTIVITY_RECOGNITION (required for step counter)..."
+"$ADB" shell pm grant com.guil.globetrotting android.permission.ACTIVITY_RECOGNITION || \
+    echo "(grant returned non-zero — likely already granted; continuing)"
+
 echo "Done. Long-press face on watch -> activate 'Globetrotting Minimalist'"

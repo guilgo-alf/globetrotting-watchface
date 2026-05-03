@@ -57,5 +57,11 @@
                 android:name="androidx.wear.tiles.PREVIEW"
                 android:resource="@drawable/preview" />
         </service>
+
+        <activity
+            android:name=".zones.ZonesActivity"
+            android:exported="true"
+            android:label="@string/tile_name"
+            android:theme="@style/WearActivityTheme" />
     </application>
 </manifest>
