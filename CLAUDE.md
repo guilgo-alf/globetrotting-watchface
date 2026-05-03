@@ -122,15 +122,16 @@ The timezone block is a **three-column grid**, not a single column. Date `SAT 02
 
 ## 11 — Session goals — STATUS
 
-All seven sessions shipped end-to-end:
+All eight sessions shipped end-to-end:
 
 - **Session 1** ✅ — minimal time-only face. Black background, `Hmm` time, seconds superscript.
 - **Session 2** ✅ — status line + date. Timezone grid stripped at user request for a cleaner symmetrical look (data structure kept in `TimezoneConfig.kt` for future re-add).
 - **Session 3** ✅ — real stats providers (`BatteryProvider`, `StepsProvider`) plus invisible complication slots for weather + phone battery. AOD already covered by per-layout `isAmbient` checks.
-- **Session 4** ✅ — `CompassSensorManager` (`TYPE_ROTATION_VECTOR`), `BearingSmoother` (α=0.10 low-pass), `CompassOverlayLayout` initially a 6 px amber dot, later refactored to a stroked red arc rotated around canvas centre.
+- **Session 4** ✅ — `CompassSensorManager` (`TYPE_ROTATION_VECTOR`), `BearingSmoother` (α=0.05 low-pass), `CompassOverlayLayout` initially a 6 px amber dot, later refactored to a stroked red arc rotated around canvas centre.
 - **Session 5** ✅ — `ExtrasTileService` with rich timezone band visualisation, DST-aware abbreviations, deep-work dot rule (black 09:00–16:30, white otherwise), home-minute echo collapse.
-- **Session 6** ✅ — `ZonesActivity` companion screen — Wear Compose `ScalingLazyColumn` with rotary bezel input, ~36 curated timezones, tap-to-open from tile.
+- **Session 6** ✅ — `ZonesActivity` companion screen — Wear Compose `ScalingLazyColumn` with rotary bezel input. **Removed in §11d** — see below.
 - **Session 7** ✅ — pre-ship hardening pass. See §11c.
+- **Session 8** ✅ — first-watch sideload + handoff prep. See §11d.
 
 ## 11a — Spec deviations from the original brief
 
@@ -158,6 +159,51 @@ Trail of decisions made before sideloading to real Galaxy Watch 6 Classic:
 11. **`BatteryProvider` Integer.MIN_VALUE sentinel** — explicit early return on the unsupported-property case rather than relying on `coerceIn` clamping to 0.
 12. **`ZonesActivity` column widths fixed for OpenDyslexic** — code column bumped 34dp → 50dp with `maxLines=1` so 4-letter codes (AKDT, NZDT, AEDT) don't soft-wrap onto two lines.
 13. **Wear Compose 1.4.0** — left at 1.4.0; the `rotaryScrollable` API and `RotaryScrollableDefaults` are stable in this version.
+
+## 11d — First-watch sideload + handoff prep (Session 8)
+
+First successful sideload to a real Galaxy Watch 6 Classic. Several issues only visible on real hardware:
+
+1. **Watch face binding hung with `NoOpCanvasComplication`** — our placeholder
+   complication implementation didn't advance the slot's data state machine,
+   so `createWatchFace` timed out after 10 s on real Wear OS 5 (error code 4).
+   Emulator was lenient; only real-watch enforcement caught it. Fixed by
+   replacing the NoOp with `CanvasComplicationDrawable` configured with all
+   colours `Color.TRANSPARENT`. Adds `watchface-complications-rendering:1.2.1`.
+2. **`ZonesActivity` removed entirely** — after the trim to the same 8 saved
+   zones as the tile, the activity added zero unique value. Removed: file,
+   manifest entry, `themes.xml`, all Compose-for-Wear deps, `kotlin("plugin.compose")`.
+   APK shrank by ~12 MB. Tile is no longer Clickable.
+3. **Compass disabled on real watch** — Galaxy Watch 6 Classic's metallic
+   rotating bezel sits millimetres from the magnetometer and produces wildly
+   unreliable readings without manual figure-8 calibration. Re-enabling needs
+   a calibration UX (deferred — see HANDOFF.md task 4).
+4. **Step counter unreliable** — Samsung's `TYPE_STEP_COUNTER` firmware
+   batches step events aggressively; can go 30+ minutes without firing. The
+   "right" fix is `androidx.health:health-services-client` with
+   `DataType.STEPS_DAILY` (deferred — see HANDOFF.md task 2).
+5. **Steps persistence** — `StepsProvider` now persists `(date, dayStartCounter)`
+   to SharedPreferences so face-switches don't reset today's count.
+6. **Customize flow not exposed in Samsung One UI Watch** — the system editor
+   doesn't appear via long-press on the Galaxy Watch 6 Classic; needs a
+   custom editor activity (deferred — see HANDOFF.md task 1).
+7. **Status-line restored to four fields** — re-added the weather + phone
+   battery slots with placeholders that fall back to the complication value
+   when slots are filled. Watch face shows `steps · tempC · watch · phone`,
+   no `%` suffix on battery values to match the Facer reference. AOD now
+   shows the status line at FAINT colour.
+8. **Watch face metrics +2 px** across all fonts; date label moved 1 px down.
+   Compass arc moved 6 px outward (radius 222) per real-watch feedback.
+9. **Screenshot / preview mode** — `GlobetrottingRenderer.isPreviewEmulator`
+   detects the Android Studio AVD and shows compass arc statically at 0° +
+   step count `17,456` so screenshots show feature-complete state regardless
+   of sensor availability. Same APK runs unchanged on real hardware.
+10. **Renamed face to "Globetrotter v2"** during sideload debugging to
+    disambiguate from cached prior installs. Plus `Globetrotter Timezones` on
+    the tile.
+11. **`HANDOFF.md` written** to brief a Wear OS specialist on the four
+    remaining issues (Customize editor, Health Services for steps, real
+    preview thumbnail, optional compass calibration UX).
 
 ## 11b — Known environmental gotcha: Wear OS 5 emulator
 
